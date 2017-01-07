@@ -3,32 +3,58 @@
 import struct,sys
 from termcolor import colored
 
-class DTBHeader:
-    # Simple class for processing the DTB Header
+class FDTHeader:
+    # Simple class for processing the FDT Header
     #
-    # Usage: instansiate class with raw string of DTB object.
+    # Usage: instansiate class with raw string of FDT object.
     # Verification and unpacking will occur in the init function.
     # Helper functions are provided for each of the elements.
 
-    def process_string(self,string):
+    def process_from_string(self,string):
 
         tempval = struct.unpack_from('!IIIIIIIIIII',string)
-        self.header['magic'] = tempval[0]
-        if self.magic != 0xd00dfeed:
+        
+        #Validate header where possible
+        if tempval[0] != 0xd00dfeed:
             raise ValueError('DTB Magic Value not found')
-
+        if self.version not in [16,17]:
+            raise ValueError('DTB version is not supported. Must be 16 or 17.')
+        
+        #Validation okay, set values
+        self.magic = tempval[0]
+        self.totalsize = tempval[1]
+        self.off_dt_struct = tempval[2]
+        self.off_dt_strings = tempval[3]
+        self.off_mem_rsvmap = tempval[4]
+        self.version = tempval[5]
+        self.last_comp_version = tempval[6]
+        self.boot_cpuid_phys = tempval[7]
+        self.size_dt_strings = tempval[8]
+        self.size_dt_struct = tempval[9]
+ 
     def __init__(self):
-        self.header = {
-		'magic':0xd00dfeed,
-                'totalsize':0,
-                'offset_dt_stuct':0,
-                'offset_dt_strings':0,
-                'offset_mem_rsvmap':0,
-                'version':17,
-                'last_comp_version':16,
-		'boot_cpuid_phys':0,
-		'size_dt_strings':0,
-		'size_dt_struct':0 }
+        self.magic = 0xd00dfeed
+        self.totalsize = 0
+        self.off_dt_struct = 0
+        self.off_dt_strings = 0
+        self.off_mem_rsvmap = 0
+        self.version = 17
+        self.last_comp_version = 16
+        self.boot_cpuid_phys = 0
+        self.size_dt_strings = 0
+        self.size_dt_struct = 0
+    
+    def str(self):
+        return struct.pack('!IIIIIIIIIII',
+	    self.magic,
+	    self.totalsize,
+	    self.off_dt_struct,
+	    self.off_dt_strings,
+	    self.off_mem_rsvmap,
+	    self.version,
+	    self.last_comp_version,
+	    self.size_dt_strings,
+	    self.size_dt_struct)
         
 def read_dtb_header(string):
     #Read the DTB header structure and return it as a tuple
@@ -111,29 +137,30 @@ def read_struct_block(string,offset,length,properties):
 
 if __name__ == '__main__':
    a = open('xenvm-4.2.dtb','rb').read()
-   header = read_dtb_header(a)
+   header = FDTHeader()
+   header.process_from_string(a)
 
    #print "Raw Header Tuple",header
-   print ("Hex of Magic Value:",colored(format(header[0],'x'),'blue'))
-   if header[0] == 0xd00dfeed:
+   print ("Hex of Magic Value:",colored(format(header.magic,'x'),'blue'))
+   if header.magic == 0xd00dfeed:
         print (colored("Header:",'cyan'),colored("Valid DTB magic value found",'green',attrs=['bold']))
-        print (colored("Header",'cyan'),"-> Total Size of file:     ",colored('{0:>8d} {0:>#8x}'.format(header[1]),'yellow'))
-        print (colored("Header",'cyan'),"-> Offset to Struct Block: ",colored('{0:>8d} {0:>#8x}'.format(header[2]),'yellow')," with size: ",colored('{0:>8d} {0:>#8x}'.format(header[9]),'yellow'))
-        print (colored("Header",'cyan'),"-> Offset to String Block: ",colored('{0:>8d} {0:>#8x}'.format(header[3]),'yellow')," with size: ",colored('{0:>8d} {0:>#8x}'.format(header[8]),'yellow'))
-        print (colored("Header",'cyan'),"-> Offset to Memory Reser: ",colored('{0:>8d} {0:>#8x}'.format(header[4]),'yellow'))
-        print (colored("Header",'cyan'),"-> Version of DTB:         ",colored('{0:>8d} {0:>#8x}'.format(header[5]),'yellow'))
-        print (colored("Header",'cyan'),"-> Previous Version of DTB:",colored('{0:>8d} {0:>#8x}'.format(header[6]),'yellow'))
-        print (colored("Header",'cyan'),"-> Boot CPU Number:        ",colored('{0:>8d} {0:>#8x}'.format(header[7]),'yellow'))
+        print (colored("Header",'cyan'),"-> Total Size of file:     ",colored('{0:>8d} {0:>#8x}'.format(header.totalsize),'yellow'))
+        print (colored("Header",'cyan'),"-> Offset to Struct Block: ",colored('{0:>8d} {0:>#8x}'.format(header.off_dt_struct),'yellow')," with size: ",colored('{0:>8d} {0:>#8x}'.format(header.size_dt_struct),'yellow'))
+        print (colored("Header",'cyan'),"-> Offset to String Block: ",colored('{0:>8d} {0:>#8x}'.format(header.off_dt_strings),'yellow')," with size: ",colored('{0:>8d} {0:>#8x}'.format(header.size_dt_strings),'yellow'))
+        print (colored("Header",'cyan'),"-> Offset to Memory Reser: ",colored('{0:>8d} {0:>#8x}'.format(header.off_mem_rsvmap),'yellow'))
+        print (colored("Header",'cyan'),"-> Version of DTB:         ",colored('{0:>8d} {0:>#8x}'.format(header.version),'yellow'))
+        print (colored("Header",'cyan'),"-> Previous Version of DTB:",colored('{0:>8d} {0:>#8x}'.format(header.last_comp_version),'yellow'))
+        print (colored("Header",'cyan'),"-> Boot CPU Number:        ",colored('{0:>8d} {0:>#8x}'.format(header.boot_cpuid_phys),'yellow'))
         print
-        b = read_memory_reservations(a,header[4])
+        b = read_memory_reservations(a,header.off_mem_rsvmap)
         if b == []:
             print (colored("Reservations",'cyan'),'-> There are no memory reservations')
         else:
            for each in b:
                print (colored("Reservations",'cyan'),'-> Memory Reservation at: ',colored('{0:>#8x}'.format(each[0]))," for size: ",colored('{0:>#8x}'.format(each[1])))
-        c = read_string_block(a,header[3],header[8])
+        c = read_string_block(a,header.off_dt_strings,header.size_dt_strings)
         print (c)
-        d = read_struct_block(a,header[2],header[9],c)
+        d = read_struct_block(a,header.off_dt_struct,header.size_dt_struct,c)
    else:
         print (coloured("Magic value not found. Aborted!"),'red',attrs=['bold'])
         sys.exit(1)
