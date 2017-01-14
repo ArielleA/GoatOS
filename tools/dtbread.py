@@ -55,10 +55,31 @@ class FDTHeader:
 	    self.last_comp_version,
 	    self.size_dt_strings,
 	    self.size_dt_struct)
-        
-def read_dtb_header(string):
-    #Read the DTB header structure and return it as a tuple
-    return struct.unpack_from('!IIIIIIIIIII',string)
+
+class FDTStrings:
+    def __init__(self):
+        self.originstring = b''
+        self.stringlength = 0
+        self.stringdict = {}
+
+    def set_raw_string(self,string,length):
+        #This function loads the raw string for this class instance.
+        if len(string) != length:
+            raise ValueError('Length of passed string does not match length')
+        self.originstring = string
+        self.stringlength = length
+ 
+    def __getitem__(self,key):
+        if key in self.stringdict:
+            return self.stringdict[key]
+        else:
+            if key < self.stringlength:
+                index=self.originstring[key:].find(b'\0')
+                item=self.originstring[key:key+index]
+                self.stringdict[key]=item
+                return item
+            else:
+                raise IndexError
 
 def read_memory_reservations(string,offset):
     reservations = []
@@ -70,18 +91,6 @@ def read_memory_reservations(string,offset):
             break
         reservations.append(item)
     return reservations
-
-def read_string_block(string,offset,length):
-    strings = {}
-    string_offset = 0
-    while string_offset < length:
-        curpos = offset+string_offset
-        index = string[curpos:].find(b'\0')
-        item = string[curpos:curpos+index]
-        strings[string_offset]=item
-        #print (string_offset,item)
-        string_offset = string_offset+index+1
-    return strings
 
 def calc_length_word_align(length):
     words = int(length/4)
@@ -158,7 +167,9 @@ if __name__ == '__main__':
         else:
            for each in b:
                print (colored("Reservations",'cyan'),'-> Memory Reservation at: ',colored('{0:>#8x}'.format(each[0]))," for size: ",colored('{0:>#8x}'.format(each[1])))
-        c = read_string_block(a,header.off_dt_strings,header.size_dt_strings)
+        #c = read_string_block(a,header.off_dt_strings,header.size_dt_strings)
+        c = FDTStrings()
+        c.set_raw_string(a[header.off_dt_strings:header.off_dt_strings+header.size_dt_strings],header.size_dt_strings)
         print (c)
         d = read_struct_block(a,header.off_dt_struct,header.size_dt_struct,c)
    else:
