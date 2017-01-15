@@ -101,12 +101,12 @@ class FDTNode:
         #This code needs improvement, some grammar input mechanism is required.
         if b'#' in name:
             value = struct.unpack('!I',value)[0]
-        elif name in [b'phandle']:
+        elif name in [b'phandle',b'virtual-reg']:
             value = struct.unpack('!I',value)[0]
-        elif name in [b'compatible',b'status':
+        elif name in [b'compatible',b'status']:
             value = value.strip(b'\x00').decode('utf-8')
             value = value.split('\x00')
-        elif name in [b'device_type',b'method',b'bootargs',b'model']:
+        elif name in [b'device_type',b'method',b'bootargs',b'model',b'label']:
             value = value.strip(b'\x00').decode('utf-8')
         elif name in [b'reg']:
             print(self.parent,self.properties)
@@ -129,12 +129,11 @@ class FDTNode:
         return (0,0)
 
     def get_1(self,reg):
-        value = struct.unpack('!I',reg)[0]
         size = struct.calcsize('!I')
+        value = struct.unpack('!I',reg[:size])[0]
         return (value,size)
       
     def get_2(self,reg):
-        #Inconsitent behavior with struct unpack for 64 bit integers. :(
         size = struct.calcsize('!Q')
         value = struct.unpack('!Q',reg[:size])[0]
         return (value,size)
@@ -260,51 +259,6 @@ def calc_length_word_align(length):
         words = words + 1
     return words*4
 
-def read_struct_block(string,offset,length,properties):
-    string = string[offset:]
-    nodes = {}
-    curnode_num = -1
-    node_stack = []
-    nodes_total = -1
-    string_offset = 0
-    while string_offset < length:
-        cmd = struct.unpack_from('!I',string,offset=string_offset)[0]
-        string_offset=string_offset+struct.calcsize('!I')
-        if cmd == 1:
-            node_stack.append(curnode_num)
-            nodes_total = nodes_total + 1
-            nodes[nodes_total] = {}
-            nodes[nodes_total]['parent']=curnode_num
-            curnode_num = nodes_total
-            #node = process_node(string,curpos,offset+length-curpos,strings)
-            nameidx = string [ string_offset : ].find(b'\0')
-            name = string [ string_offset : string_offset+nameidx ]
-            nodes[curnode_num]['name']=name
-            print ("Found CMD",cmd,"with name",name,"at position",string_offset,"continuing from",end=' ')
-            string_offset=string_offset+calc_length_word_align(nameidx+1)
-            print (string_offset)
-        elif cmd == 3:
-            property_len, property_nameoff = struct.unpack_from('!II',string, offset=string_offset)
-            string_offset=string_offset+struct.calcsize('!II')
-            property_name = properties[property_nameoff]
-            print (property_len,property_name)
-            property_val = string[string_offset:string_offset+property_len]
-            string_offset=string_offset+calc_length_word_align(property_len)
-            nodes[curnode_num][property_name]=property_val
-            print ("Found CMD",cmd,"with property name",property_name,"and value",property_val,"continuing from",string_offset)
-        elif cmd == 2:
-            print ("Found CMD",cmd,"finishing node",curnode_num,"returning to node",end=' ')
-            curnode_num=node_stack.pop()
-            print (curnode_num)
-        elif cmd == 4:
-            print ("Found CMD",cmd,"which is a NOP, ignoring")
-        elif cmd == 9:
-            print ("Found CMD",cmd,"which is the end of struct block")
-            return nodes
-        else:
-            print("Unknown Command",cmd)  
-            print (nodes)
-            break
         
 def debug_info_header(header):
    print (colored("Header:",'cyan'),colored("Valid FDT magic value found",'green',attrs=['bold']))
@@ -335,7 +289,7 @@ def debug_info_struct(fdt):
    debug_node(fdt,root,depth,path)
    
 if __name__ == '__main__':
-   a = open('xenvm-4.2.dtb','rb').read()
+   a = open(sys.argv[1],'rb').read()
    header = FDTHeader()
    header.process_from_string(a)
 
