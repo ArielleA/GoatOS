@@ -86,6 +86,10 @@ class FDTNode:
         self.name = name
         self.children = []
         self.properties = {}
+        self.parent = None
+
+    def set_parent(self,parent):
+        self.parent=parent
    
     def add_child(self,location):
         self.children.append(location)
@@ -94,19 +98,72 @@ class FDTNode:
         return self.children
 
     def add_property(self, name, value=None):
+        #This code needs improvement, some grammar input mechanism is required.
         if b'#' in name:
             value = struct.unpack('!I',value)[0]
         elif name in [b'phandle']:
             value = struct.unpack('!I',value)[0]
-        elif name == b'compatible':
+        elif name in [b'compatible',b'status':
             value = value.strip(b'\x00').decode('utf-8')
             value = value.split('\x00')
         elif name in [b'device_type',b'method',b'bootargs',b'model']:
             value = value.strip(b'\x00').decode('utf-8')
+        elif name in [b'reg']:
+            print(self.parent,self.properties)
+            value = self.process_reg(self.get_reg_size(),value)
         self.properties[name.decode('utf-8')]=value
 
     def get_properties(self):
         return self.properties
+    
+    def get_reg_size(self):
+        print(self.parent, self.properties)
+        if '#address-cells' in self.properties and '#size-cells' in self.properties:
+            return (self.properties['#address-cells'],self.properties['#size-cells'])
+        elif self.parent == None:
+            return (2,1)
+        else:
+            return self.parent.get_reg_size()
+
+    def get_0(self,reg):
+        return (0,0)
+
+    def get_1(self,reg):
+        value = struct.unpack('!I',reg)[0]
+        size = struct.calcsize('!I')
+        return (value,size)
+      
+    def get_2(self,reg):
+        #Inconsitent behavior with struct unpack for 64 bit integers. :(
+        size = struct.calcsize('!Q')
+        value = struct.unpack('!Q',reg[:size])[0]
+        return (value,size)
+
+    def get_value(self,reg,size):
+        if size == 0:
+            return self.get_0(reg)
+        elif size == 1:
+            return self.get_1(reg)
+        elif size == 2:
+            return self.get_2(reg)
+        else:
+            raise ValueError("Register size is too large")
+
+
+    def process_reg(self,reg_size,reg):
+        
+        register_list = []
+        while reg != b'':
+
+            print(reg_size,reg,len(reg))
+            ac, acs = self.get_value(reg,reg_size[0])
+            reg = reg[acs:]
+            sc, scs = self.get_value(reg,reg_size[1])
+            reg = reg[scs:]
+            register_list.append((ac,sc))
+        return register_list
+
+
     
     def __getitem__(self,key):
         return self.properties[key]
@@ -172,6 +229,7 @@ class FDTStruct:
                 #If we are the root node, do not add link to self
                 if offset != 0:
                     self.nodes[curnode].add_child(offset)
+                    self.nodes[offset].set_parent(self.nodes[curnode])
                 #Make ourself be the current node
                 curnode = offset
             elif cmd == 2:
