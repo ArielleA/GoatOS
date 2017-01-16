@@ -99,14 +99,34 @@ class FDTNode:
         self.children = []
         self.properties = {}
         self.parent = None
+        self.phandles = None
+        self.deferred_properties = {}
 
     def is_root(self):
         """Return True if root node"""
         return not self.parent
 
+    def set_phandle(self, phandle, node):
+        """Set a Phandle at root of tree"""
+        if self.is_root():
+            self.phandles[phandle] = node
+        else:
+            self.parent.set_phandle(phandle, node)
+
+    def get_phandle(self, phandle):
+        """Get node for a particular phandle"""
+        if self.is_root():
+            return self.phandles[phandle]
+        else:
+            self.parent.get_phandle(phandle)
+
     def set_parent(self, parent):
         """Set the link to parent object"""
         self.parent = parent
+
+    def get_parent(self):
+        """Return parent Node"""
+        return self.parent
 
     def add_child(self, node):
         """Add a child vertex"""
@@ -124,6 +144,8 @@ class FDTNode:
             value = struct.unpack('!I', value)[0]
         elif name in [b'phandle', b'virtual-reg']:
             value = struct.unpack('!I', value)[0]
+            if name == b'phandle':
+                self.set_phandle(value, self)
         elif name in [b'compatible', b'status']:
             value = value.strip(b'\x00').decode('utf-8')
             value = value.split('\x00')
@@ -131,7 +153,26 @@ class FDTNode:
             value = value.strip(b'\x00').decode('utf-8')
         elif name in [b'reg']:
             value = self.process_reg(self.get_reg_size(), value)
+        elif name in [b'interrupts', b'interrupt-parent']:
+            self.deferred_properties[name] = value
+
         self.properties[name.decode('utf-8')] = value
+
+    def get_interrupt_parent(self):
+        """Get the interrupt parent field"""
+        if 'interrupt-parent' in self.properties:
+            return self.properties['interrupt-parent']
+        else:
+            self.parent.get_interrupt_parent()
+
+    def process_deferreds(self):
+        """We have special behavior for deferred properties. Process each in turn"""
+        if self.deferred_properties.keys():
+            if b'interrupt-parent' in self.deferred_properties:
+                phandle = struct.unpack('!I', self.deferred_properties[b'interrupt-parent'])[0]
+                self.properties['interrupt-parent'] = self.get_phandle(phandle)
+        for child in self.children:
+            child.process_deferreds()
 
     def get_properties(self):
         """Return the properties attached to the node"""
@@ -215,15 +256,14 @@ class FDTStruct:
     def __getitem__(self, key):
         return self.nodes[key]
 
-    def new_node(self, location, offset):
+    def new_node(self, offset):
         """Process creation of new node."""
         # First we get the name of the node
         nameidx = self.string[offset:].find(b'\0')
         name = self.string[offset: offset + nameidx]
         string_offset = offset + calc_length_word_align(nameidx + 1)
         node = FDTNode(name)
-        self.nodes[location] = node
-        return string_offset
+        return string_offset, node
 
     def new_property(self, node, offset, properties):
         """Add a property to the specified node"""
@@ -233,7 +273,7 @@ class FDTStruct:
         property_name = properties[property_nameoff]
         property_val = self.string[offset:offset + property_len]
         offset += calc_length_word_align(property_len)
-        self.nodes[node].add_property(property_name, property_val)
+        node.add_property(property_name, property_val)
         return offset
 
     def process_struct(self):
@@ -241,32 +281,30 @@ class FDTStruct:
 
         This node manages the dispatch of all the sub-commands"""
         offset = 0
-        current_node = 0
-        stack = []
-        print(stack, current_node)
+        current_node = None
         while offset < self.length:
             cmd, next_offset = self.get_command(offset)
             # Process Commands
             if cmd == self.CMD_Node_Start:
-                # Check if we are root, if not append on stack
-                if offset != 0:
-                    stack.append(current_node)
                 # Create new node and return next offset
-                next_offset = self.new_node(offset, next_offset)
-                # If we are the root node, do not add link to self
-                if offset != 0:
-                    self.nodes[current_node].add_child(self.nodes[offset])
-                    self.nodes[offset].set_parent(self.nodes[current_node])
-                # Make our self be the current node
-                current_node = offset
+                next_offset, node = self.new_node(next_offset)
+                # Is there a root node? if not make this node root
                 if not self.root:
-                    self.root = self.nodes[offset]
+                    self.root = node
+                    node.phandles = {} # Add dict of phandles to root node.
+                # If we are the root node, do not add link to self
+                if current_node:
+                    current_node.add_child(node)
+                    node.set_parent(current_node)
+                # Make our self be the current node
+                current_node = node
             elif cmd == self.CMD_Node_End:
-                if len(stack) > 0:
-                    current_node = stack.pop()
+                if not current_node.is_root():
+                    current_node = current_node.get_parent()
             elif cmd == self.CMD_Property:
                 next_offset = self.new_property(current_node, next_offset, self.properties)
             elif cmd == self.CMD_Stream_End:
+                self.root.process_deferreds()
                 break
             offset = next_offset
 
@@ -318,12 +356,13 @@ def debug_node(fdt, node, depth, path):
     """Pretty print the provided node"""
     depth += 1
     path = path + node.get_name() + b'/'
-    print(colored("Node:", 'cyan'), "-> ", colored(path.decode('ascii'), 'green'), '{')
+    print()
+    print(colored("Tree:", 'cyan'), "-> ", colored(path.decode('ascii'), 'green'), '{')
     for key in node.keys():
         print(colored("Node:", 'cyan'), "-> ", "   " * depth, key, "=", colored(node[key], 'yellow'))
     for leaf in node.get_children():
         debug_node(fdt, leaf, depth, path)
-    print(colored("Node:", 'cyan'), "-> ", "   " * depth, "};")
+    print(colored("Tree:", 'cyan'), "-> ", "   " * depth, "};")
 
 
 def debug_info_struct(fdt):
