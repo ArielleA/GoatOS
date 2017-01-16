@@ -11,7 +11,7 @@ from termcolor import colored
 class FDTHeader:
     """Simple class for processing the FDT Header
 
-    Usage: instansiate class with raw string of FDT object.
+    Usage: instantiate class with raw string of FDT object.
     Verification and unpacking will occur in the init function.
     Helper functions are provided for each of the elements."""
 
@@ -100,13 +100,17 @@ class FDTNode:
         self.properties = {}
         self.parent = None
 
+    def is_root(self):
+        """Return True if root node"""
+        return not self.parent
+
     def set_parent(self, parent):
         """Set the link to parent object"""
         self.parent = parent
 
-    def add_child(self, location):
+    def add_child(self, node):
         """Add a child vertex"""
-        self.children.append(location)
+        self.children.append(node)
 
     def get_children(self):
         """Return the child vertices"""
@@ -115,6 +119,7 @@ class FDTNode:
     def add_property(self, name, value=None):
         """Add a property to the current node"""
         # This code needs improvement, some grammar input mechanism is required.
+        # Adding Phandles and deferred processing on tree completion needs to be added.
         if b'#' in name:
             value = struct.unpack('!I', value)[0]
         elif name in [b'phandle', b'virtual-reg']:
@@ -193,7 +198,7 @@ class FDTStruct:
         self.length = length
         self.properties = properties
         self.nodes = {}
-        self.root = 0
+        self.root = None
 
     def get_command(self, offset):
         """Unpack command from stream"""
@@ -250,12 +255,14 @@ class FDTStruct:
                 next_offset = self.new_node(offset, next_offset)
                 # If we are the root node, do not add link to self
                 if offset != 0:
-                    self.nodes[current_node].add_child(offset)
+                    self.nodes[current_node].add_child(self.nodes[offset])
                     self.nodes[offset].set_parent(self.nodes[current_node])
                 # Make our self be the current node
                 current_node = offset
+                if not self.root:
+                    self.root = self.nodes[offset]
             elif cmd == self.CMD_Node_End:
-                if stack != []:
+                if len(stack) > 0:
                     current_node = stack.pop()
             elif cmd == self.CMD_Property:
                 next_offset = self.new_property(current_node, next_offset, self.properties)
@@ -310,11 +317,11 @@ def debug_info_header(header):
 def debug_node(fdt, node, depth, path):
     """Pretty print the provided node"""
     depth += 1
-    path = path + fdt[node].get_name() + b'/'
+    path = path + node.get_name() + b'/'
     print(colored("Node:", 'cyan'), "-> ", colored(path.decode('ascii'), 'green'), '{')
-    for key in fdt[node].keys():
-        print(colored("Node:", 'cyan'), "-> ", "   " * depth, key, "=", colored(fdt[node][key], 'yellow'))
-    for leaf in fdt[node].get_children():
+    for key in node.keys():
+        print(colored("Node:", 'cyan'), "-> ", "   " * depth, key, "=", colored(node[key], 'yellow'))
+    for leaf in node.get_children():
         debug_node(fdt, leaf, depth, path)
     print(colored("Node:", 'cyan'), "-> ", "   " * depth, "};")
 
