@@ -149,6 +149,9 @@ class FDTNode:
         elif name in [b'compatible', b'status']:
             value = value.strip(b'\x00').decode('utf-8')
             value = value.split('\x00')
+        elif b'-names' in name:
+            value = value.strip(b'\x00').decode('utf-8')
+            value = value.split('\x00')
         elif name in [b'device_type', b'method', b'bootargs', b'model', b'label']:
             value = value.strip(b'\x00').decode('utf-8')
         elif name in [b'reg']:
@@ -158,25 +161,33 @@ class FDTNode:
 
         self.properties[name.decode('utf-8')] = value
 
-    def get_interrupt_parent(self):
-        """Get the interrupt parent field"""
-        if 'interrupt-parent' in self.properties:
-            return self.properties['interrupt-parent']
-        else:
-            self.parent.get_interrupt_parent()
-
     def process_deferreds(self):
         """We have special behavior for deferred properties. Process each in turn"""
         if self.deferred_properties.keys():
             if b'interrupt-parent' in self.deferred_properties:
                 phandle = struct.unpack('!I', self.deferred_properties[b'interrupt-parent'])[0]
                 self.properties['interrupt-parent'] = self.get_phandle(phandle)
+            if b'interrupts' in self.deferred_properties:
+                interrupt_parent = self.get_inherited('interrupt-parent')
+                print(interrupt_parent)
+                cell_size = interrupt_parent['#interrupt-cells']
+                self.properties['interrupts'] = self.process_interrupts(self.properties['interrupts'],cell_size)
+        # Process children vertices in Depth First traversal.
         for child in self.children:
             child.process_deferreds()
 
     def get_properties(self):
         """Return the properties attached to the node"""
         return self.properties
+
+    def get_inherited(self, key):
+        """Get the inherited property"""
+        if key in self.properties:
+            return self.properties[key]
+        elif self.parent:
+            return self.parent.get_inherited(key)
+        else:
+            return None
 
     def get_reg_size(self):
         """Get the size of the cells for a reg field. Or if not found return default"""
@@ -186,6 +197,20 @@ class FDTNode:
             return 2, 1
         else:
             return self.parent.get_reg_size()
+
+    def process_interrupts(self, reg, cell_size):
+        """Process the value into interrupt specifiers"""
+        # Iterate over the field unpacking the number of cells required into a list of tuples.
+        interrupts = []
+        while reg != b'':
+            print (reg)
+            interrupt = []
+            for element in range(cell_size):
+                i, size = self.get_value(reg, 1)
+                interrupt.append(i)
+                reg = reg[size:]
+            interrupts.append(tuple(interrupt))
+        return interrupts
 
     @staticmethod
     def get_value(reg, size):
@@ -291,7 +316,7 @@ class FDTStruct:
                 # Is there a root node? if not make this node root
                 if not self.root:
                     self.root = node
-                    node.phandles = {} # Add dict of phandles to root node.
+                    node.phandles = {}  # Add dict of phandles to root node.
                 # If we are the root node, do not add link to self
                 if current_node:
                     current_node.add_child(node)
@@ -375,15 +400,17 @@ def debug_info_struct(fdt):
 
 
 if __name__ == '__main__':
-    a = open(sys.argv[1], 'rb').read()
+    with open(sys.argv[1], 'rb') as file:
+        rawfdt = file.read()
+    
     fdtheader = FDTHeader()
-    fdtheader.process_from_string(a)
+    fdtheader.process_from_string(rawfdt)
 
     # print "Raw Header Tuple",header
     # print ("Hex of Magic Value:",colored(format(header.magic,'x'),'blue'))
     if fdtheader.magic == 0xd00dfeed:
         debug_info_header(fdtheader)
-        memory_reservations = read_memory_reservations(a, fdtheader.off_mem_rsvmap)
+        memory_reservations = read_memory_reservations(rawfdt, fdtheader.off_mem_rsvmap)
         if memory_reservations is []:
             print(colored("Reservations", 'cyan'), '-> There are no memory reservations')
         else:
@@ -393,9 +420,9 @@ if __name__ == '__main__':
                     " for size: ", colored('{0:>#8x}'.format(each[1])))
         # c = read_string_block(a,header.off_dt_strings,header.size_dt_strings)
         fdt_strings = FDTStrings()
-        fdt_strings.set_raw_string(a[fdtheader.off_dt_strings:fdtheader.off_dt_strings + fdtheader.size_dt_strings],
+        fdt_strings.set_raw_string(rawfdt[fdtheader.off_dt_strings:fdtheader.off_dt_strings + fdtheader.size_dt_strings],
                                    fdtheader.size_dt_strings)
-        ftd_struct = FDTStruct(a[fdtheader.off_dt_struct:], fdtheader.size_dt_struct, fdt_strings)
+        ftd_struct = FDTStruct(rawfdt[fdtheader.off_dt_struct:], fdtheader.size_dt_struct, fdt_strings)
         ftd_struct.process_struct()
         debug_info_struct(ftd_struct)
         # d = read_struct_block(a,header.off_dt_struct,header.size_dt_struct,c)
