@@ -1,0 +1,26 @@
+{"properties": {
+  "0":{
+    "compatible":           { "types": ["stringlist"] },
+    "model":                { "types": ["stringlist"] },
+    "phandle":              { "types": ["u32"] },
+    "status":               { "types": ["string"], "values": ["okay", "disabled", "fail", "fail-sss"] },
+    "#address-cells":       { "types": ["u32"] },
+    "#size-cells":          { "types": ["u32"] },
+    "reg":                  { "types": ["prop-encode"], "sizes":["#address-cells", "#size-cells"] },
+    "virtual-reg":          { "types": ["u32"]},
+    "ranges":               { "types": ["prop-encode", "empty"], "sizes":["#address-cells", "#address-cells", "#size-cells"]},
+    "dma-ranges":           { "types": ["prop-encode", "empty"], "sizes":["#address-cells", "#address-cells", "#size-cells"]},
+    "name":                 { "types": ["string"]},
+    "device_type":          { "types": ["string"]},
+    "#interrupt-cells":     { "types": ["u32"]},
+    "interrupt-controller": { "types": ["empty"]}
+
+  },
+  "1":{
+    "interrupt-parent": {"types": ["phandle"]}
+  },
+  "2":{
+    "interrupt":      {"types":["prop-encode"],"template":["u32"],"count":"#interrupt-cells"},
+    "interrupt-map":  {"types":["prop-encode"],"template":[null,"interrupt","phandle","interrupt"],"sizes":["#address-cells","#interrupt-cells","phandle","#interrupt-cells"]}
+  }
+}}

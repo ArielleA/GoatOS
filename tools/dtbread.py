@@ -67,6 +67,7 @@ class FDTHeader:
 
 class FDTStrings:
     """The class that unpacks the String section of FDT File"""
+
     def __init__(self):
         self.originstring = b''
         self.stringlength = 0
@@ -94,6 +95,7 @@ class FDTStrings:
 
 class FDTNode:
     """Class for managing nodes within the Structure section of a FDT"""
+
     def __init__(self, name):
         self.name = name
         self.children = []
@@ -171,7 +173,7 @@ class FDTNode:
                 interrupt_parent = self.get_inherited('interrupt-parent')
                 print(interrupt_parent)
                 cell_size = interrupt_parent['#interrupt-cells']
-                self.properties['interrupts'] = self.process_interrupts(self.properties['interrupts'],cell_size)
+                self.properties['interrupts'] = self.process_interrupts(self.properties['interrupts'], cell_size)
         # Process children vertices in Depth First traversal.
         for child in self.children:
             child.process_deferreds()
@@ -203,7 +205,7 @@ class FDTNode:
         # Iterate over the field unpacking the number of cells required into a list of tuples.
         interrupts = []
         while reg != b'':
-            print (reg)
+            print(reg)
             interrupt = []
             for element in range(cell_size):
                 i, size = self.get_value(reg, 1)
@@ -402,7 +404,7 @@ def debug_info_struct(fdt):
 if __name__ == '__main__':
     with open(sys.argv[1], 'rb') as file:
         rawfdt = file.read()
-    
+
     fdtheader = FDTHeader()
     fdtheader.process_from_string(rawfdt)
 
@@ -420,8 +422,9 @@ if __name__ == '__main__':
                     " for size: ", colored('{0:>#8x}'.format(each[1])))
         # c = read_string_block(a,header.off_dt_strings,header.size_dt_strings)
         fdt_strings = FDTStrings()
-        fdt_strings.set_raw_string(rawfdt[fdtheader.off_dt_strings:fdtheader.off_dt_strings + fdtheader.size_dt_strings],
-                                   fdtheader.size_dt_strings)
+        fdt_strings.set_raw_string(
+            rawfdt[fdtheader.off_dt_strings:fdtheader.off_dt_strings + fdtheader.size_dt_strings],
+            fdtheader.size_dt_strings)
         ftd_struct = FDTStruct(rawfdt[fdtheader.off_dt_struct:], fdtheader.size_dt_struct, fdt_strings)
         ftd_struct.process_struct()
         debug_info_struct(ftd_struct)
