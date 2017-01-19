@@ -140,27 +140,6 @@ class FDTNode:
 
     def add_property(self, name, value=None):
         """Add a property to the current node"""
-        # This code needs improvement, some grammar input mechanism is required.
-        # Adding Phandles and deferred processing on tree completion needs to be added.
-        if b'#' in name:
-            value = struct.unpack('!I', value)[0]
-        elif name in [b'phandle', b'virtual-reg']:
-            value = struct.unpack('!I', value)[0]
-            if name == b'phandle':
-                self.set_phandle(value, self)
-        elif name in [b'compatible', b'status']:
-            value = value.strip(b'\x00').decode('utf-8')
-            value = value.split('\x00')
-        elif b'-names' in name:
-            value = value.strip(b'\x00').decode('utf-8')
-            value = value.split('\x00')
-        elif name in [b'device_type', b'method', b'bootargs', b'model', b'label']:
-            value = value.strip(b'\x00').decode('utf-8')
-        elif name in [b'reg']:
-            value = self.process_reg(self.get_reg_size(), value)
-        elif name in [b'interrupts', b'interrupt-parent']:
-            self.deferred_properties[name] = value
-
         self.properties[name.decode('utf-8')] = value
 
     def process_deferreds(self):
@@ -267,6 +246,11 @@ class FDTStruct:
         self.properties = properties
         self.nodes = {}
         self.root = None
+        self.config = None
+
+    def set_config(self,config):
+        """Set the Configuration"""
+        self.config = config
 
     def get_command(self, offset):
         """Unpack command from stream"""
@@ -291,6 +275,34 @@ class FDTStruct:
         string_offset = offset + calc_length_word_align(nameidx + 1)
         node = FDTNode(name)
         return string_offset, node
+
+    def process_property(self, stage, property_name, property_value):
+        """Process the property during parse process"""
+        property_dict = self.config["properties"][stage]
+        if property_name in property_dict:
+            types = property_dict[property_name]["types"]
+            if "empty" in types and len(property_value) == 0:
+                return property_value
+            elif "u32" in types:
+                size = struct.calcsize('!I')
+                return struct.unpack('!I', property_value[:size])[0]
+            elif "u64" in types:
+                size = struct.calcsize('!Q')
+                return struct.unpack('!Q', property_value[:size])[0]
+            elif "string" in types:
+                property_value = property_value.strip(b'\x00').decode('utf-8')
+                if "values" in property_dict[property_name]:
+                    if property_value not in property_dict[property_name]["values"]:
+                        raise ValueError("Value is not valid")
+                return property_value
+            elif "stringlist" in types:
+                property_value = property_value.strip(b'\x00').decode('utf-8')
+                property_value = property_value.split('\x00')
+                return property_value
+            elif "prop-encode" in types:
+                return
+            else:
+                Raise ValueError("Invalid property type")
 
     def new_property(self, node, offset, properties):
         """Add a property to the specified node"""
