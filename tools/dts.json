@@ -13,7 +13,8 @@
     "name":                 { "types": ["string"]},
     "device_type":          { "types": ["string"]},
     "#interrupt-cells":     { "types": ["u32"]},
-    "interrupt-controller": { "types": ["empty"]}
+    "interrupt-controller": { "types": ["empty"]},
+    "linux,phandle":        { "types": ["u32"]}
 
   },
   "1":{

@@ -223,6 +223,9 @@ class FDTNode:
     def __getitem__(self, key):
         return self.properties[key]
 
+    def __setitem__(self, key, value):
+        self.properties[key] = value
+
     def keys(self):
         """Return list of properties"""
         return self.properties.keys()
@@ -277,17 +280,25 @@ class FDTStruct:
         return string_offset, node
 
     @staticmethod
+    def _get_u0(property_value):
+        """Return empty value"""
+        return None
+
+    @staticmethod
     def _get_u32(property_value):
+        """Return Unsigned 32 bit value"""
         size = struct.calcsize('!I')
         return struct.unpack('!I', property_value[:size])[0], property_value[size:]
 
     @staticmethod
     def _get_u64(property_value):
+        """Return Unsigned 64 bit value"""
         size = struct.calcsize('!Q')
         return struct.unpack('!Q', property_value[:size])[0], property_value[size:]
 
     @staticmethod
     def _get_string(property_value, property_dict):
+        """Return String Value"""
         property_value = property_value.strip(b'\x00').decode('utf-8')
         if "values" in property_dict:
             if property_value not in property_dict["values"]:
@@ -296,6 +307,7 @@ class FDTStruct:
 
     @staticmethod
     def _get_string_list(property_value):
+        """Return String list value"""
         property_value = property_value.strip(b'\x00').decode('utf-8')
         property_value = property_value.split('\x00')
         return property_value, ''
@@ -305,11 +317,11 @@ class FDTStruct:
         property_dict = self.config["properties"][stage]
         if property_name in property_dict:
             types = property_dict[property_name]["types"]
-            print(property_name, types)
             if 'empty' in types and len(property_value) == 0:
                 return None
             elif 'u32' in types:
                 value, property_value = self._get_u32(property_value)
+                self.process_special(node, property_name, value)
                 return value
             elif "u64" in types:
                 value, property_value = self._get_u64(property_value)
@@ -320,6 +332,9 @@ class FDTStruct:
             elif "stringlist" in types:
                 value, property_value = self._get_string_list(property_value)
                 return value
+            elif "phandle" in types:
+                handle = self._get_u32(property_value)[0]
+                return node.get_phandle(handle)
             elif "prop-encode" in types:
                 sizes = property_dict[property_name]['sizes']
                 element_sizes = []
@@ -333,13 +348,10 @@ class FDTStruct:
                         element_sizes.append('u0')
                     else:
                         raise ValueError("Unsupported item length")
-                    print(item, item_size, element_sizes)
                 elements = []
                 while property_value != b'':
                     element = []
-                    print(element_sizes)
                     for item in element_sizes:
-                        print(item)
                         if item == 'u32':
                             value, property_value = self._get_u32(property_value)
                         elif item == 'u64':
@@ -355,6 +367,31 @@ class FDTStruct:
                 raise ValueError("Invalid property type")
         else:
             return property_value
+
+    def process_special(self, node, property_name, property_val):
+        """Handle special cases"""
+        print(property_name, node)
+        if property_name == 'phandle':
+            self.root.set_phandle(property_val, node)
+
+    def do_process_pass(self, stage, node, mapping_dict):
+        for item in node.keys():
+            if item in mapping_dict:
+                value = self.process_property(stage, item, node[item], node)
+                node[item] = value
+        for child in node.get_children():
+            self.do_process_pass(stage, child, mapping_dict)
+
+    def do_process_passes(self):
+        print(self.root.phandles)
+        passes = list(self.config["properties"].keys())
+        passes.sort()
+        passes.remove("0")
+        for current_pass in passes:
+            mapping_dict = self.config["properties"][current_pass]
+            node = self.root
+            self.do_process_pass(current_pass, node, mapping_dict)
+
 
     def new_property(self, node, offset, properties):
         """Add a property to the specified node"""
@@ -397,6 +434,7 @@ class FDTStruct:
                 next_offset = self.new_property(current_node, next_offset, self.properties)
             elif cmd == self.CMD_Stream_End:
                 self.root.process_deferreds()
+                self.do_process_passes()
                 break
             offset = next_offset
 
