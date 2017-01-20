@@ -86,7 +86,7 @@ class FDTStrings:
         else:
             if key < self.stringlength:
                 index = self.originstring[key:].find(b'\0')
-                item = self.originstring[key:key + index]
+                item = self.originstring[key:key + index].decode()
                 self.stringdict[key] = item
                 return item
             else:
@@ -140,7 +140,7 @@ class FDTNode:
 
     def add_property(self, name, value=None):
         """Add a property to the current node"""
-        self.properties[name.decode('utf-8')] = value
+        self.properties[name] = value
 
     def process_deferreds(self):
         """We have special behavior for deferred properties. Process each in turn"""
@@ -248,7 +248,7 @@ class FDTStruct:
         self.root = None
         self.config = None
 
-    def set_config(self,config):
+    def set_config(self, config):
         """Set the Configuration"""
         self.config = config
 
@@ -276,33 +276,85 @@ class FDTStruct:
         node = FDTNode(name)
         return string_offset, node
 
-    def process_property(self, stage, property_name, property_value):
+    @staticmethod
+    def _get_u32(property_value):
+        size = struct.calcsize('!I')
+        return struct.unpack('!I', property_value[:size])[0], property_value[size:]
+
+    @staticmethod
+    def _get_u64(property_value):
+        size = struct.calcsize('!Q')
+        return struct.unpack('!Q', property_value[:size])[0], property_value[size:]
+
+    @staticmethod
+    def _get_string(property_value, property_dict):
+        property_value = property_value.strip(b'\x00').decode('utf-8')
+        if "values" in property_dict:
+            if property_value not in property_dict["values"]:
+                raise ValueError("Value is not valid")
+        return property_value, ''
+
+    @staticmethod
+    def _get_string_list(property_value):
+        property_value = property_value.strip(b'\x00').decode('utf-8')
+        property_value = property_value.split('\x00')
+        return property_value, ''
+
+    def process_property(self, stage, property_name, property_value, node):
         """Process the property during parse process"""
         property_dict = self.config["properties"][stage]
         if property_name in property_dict:
             types = property_dict[property_name]["types"]
-            if "empty" in types and len(property_value) == 0:
-                return property_value
-            elif "u32" in types:
-                size = struct.calcsize('!I')
-                return struct.unpack('!I', property_value[:size])[0]
+            print(property_name, types)
+            if 'empty' in types and len(property_value) == 0:
+                return None
+            elif 'u32' in types:
+                value, property_value = self._get_u32(property_value)
+                return value
             elif "u64" in types:
-                size = struct.calcsize('!Q')
-                return struct.unpack('!Q', property_value[:size])[0]
+                value, property_value = self._get_u64(property_value)
+                return value
             elif "string" in types:
-                property_value = property_value.strip(b'\x00').decode('utf-8')
-                if "values" in property_dict[property_name]:
-                    if property_value not in property_dict[property_name]["values"]:
-                        raise ValueError("Value is not valid")
-                return property_value
+                value, property_value = self._get_string(property_value, property_dict[property_name])
+                return value
             elif "stringlist" in types:
-                property_value = property_value.strip(b'\x00').decode('utf-8')
-                property_value = property_value.split('\x00')
-                return property_value
+                value, property_value = self._get_string_list(property_value)
+                return value
             elif "prop-encode" in types:
-                return
+                sizes = property_dict[property_name]['sizes']
+                element_sizes = []
+                for item in sizes:
+                    item_size = node.get_inherited(item)
+                    if item_size == 1:
+                        element_sizes.append('u32')
+                    elif item_size == 2:
+                        element_sizes.append('u64')
+                    elif item_size == 0:
+                        element_sizes.append('u0')
+                    else:
+                        raise ValueError("Unsupported item length")
+                    print(item, item_size, element_sizes)
+                elements = []
+                while property_value != b'':
+                    element = []
+                    print(element_sizes)
+                    for item in element_sizes:
+                        print(item)
+                        if item == 'u32':
+                            value, property_value = self._get_u32(property_value)
+                        elif item == 'u64':
+                            value, property_value = self._get_u64(property_value)
+                        elif item == 'u0':
+                            value = 0
+                        else:
+                            raise ValueError("Invalid size")
+                        element.append(value)
+                    elements.append(tuple(element))
+                return elements
             else:
-                Raise ValueError("Invalid property type")
+                raise ValueError("Invalid property type")
+        else:
+            return property_value
 
     def new_property(self, node, offset, properties):
         """Add a property to the specified node"""
@@ -312,6 +364,7 @@ class FDTStruct:
         property_name = properties[property_nameoff]
         property_val = self.string[offset:offset + property_len]
         offset += calc_length_word_align(property_len)
+        property_val = self.process_property('0', property_name, property_val, node)
         node.add_property(property_name, property_val)
         return offset
 
@@ -417,6 +470,10 @@ if __name__ == '__main__':
     with open(sys.argv[1], 'rb') as file:
         rawfdt = file.read()
 
+    with open('dts.json') as mapping_file:
+        import json
+        config = json.load(mapping_file)
+
     fdtheader = FDTHeader()
     fdtheader.process_from_string(rawfdt)
 
@@ -438,6 +495,7 @@ if __name__ == '__main__':
             rawfdt[fdtheader.off_dt_strings:fdtheader.off_dt_strings + fdtheader.size_dt_strings],
             fdtheader.size_dt_strings)
         ftd_struct = FDTStruct(rawfdt[fdtheader.off_dt_struct:], fdtheader.size_dt_struct, fdt_strings)
+        ftd_struct.set_config(config)
         ftd_struct.process_struct()
         debug_info_struct(ftd_struct)
         # d = read_struct_block(a,header.off_dt_struct,header.size_dt_struct,c)
