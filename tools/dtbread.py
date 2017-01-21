@@ -150,7 +150,6 @@ class FDTNode:
                 self.properties['interrupt-parent'] = self.get_phandle(phandle)
             if b'interrupts' in self.deferred_properties:
                 interrupt_parent = self.get_inherited('interrupt-parent')
-                print(interrupt_parent)
                 cell_size = interrupt_parent['#interrupt-cells']
                 self.properties['interrupts'] = self.process_interrupts(self.properties['interrupts'], cell_size)
         # Process children vertices in Depth First traversal.
@@ -165,6 +164,8 @@ class FDTNode:
         """Get the inherited property"""
         if key in self.properties:
             return self.properties[key]
+        elif key == '#interrupt-cells' and 'interrupt-parent' in self.properties:
+            return self.properties['interrupt-parent'].get_inherited(key)
         elif self.parent:
             return self.parent.get_inherited(key)
         else:
@@ -184,7 +185,6 @@ class FDTNode:
         # Iterate over the field unpacking the number of cells required into a list of tuples.
         interrupts = []
         while reg != b'':
-            print(reg)
             interrupt = []
             for element in range(cell_size):
                 i, size = self.get_value(reg, 1)
@@ -338,16 +338,21 @@ class FDTStruct:
             elif "prop-encode" in types:
                 sizes = property_dict[property_name]['sizes']
                 element_sizes = []
-                for item in sizes:
-                    item_size = node.get_inherited(item)
-                    if item_size == 1:
-                        element_sizes.append('u32')
-                    elif item_size == 2:
-                        element_sizes.append('u64')
-                    elif item_size == 0:
-                        element_sizes.append('u0')
-                    else:
-                        raise ValueError("Unsupported item length")
+                if "count" in property_dict[property_name]:
+                    count = node.get_inherited(property_dict[property_name]["count"])
+                    for each in range(int(count)):
+                        element_sizes.append(sizes[0])
+                else:
+                    for item in sizes:
+                        item_size = node.get_inherited(item)
+                        if item_size == 1:
+                            element_sizes.append('u32')
+                        elif item_size == 2:
+                            element_sizes.append('u64')
+                        elif item_size == 0:
+                            element_sizes.append('u0')
+                        else:
+                            raise ValueError("Unsupported item length")
                 elements = []
                 while property_value != b'':
                     element = []
@@ -370,11 +375,11 @@ class FDTStruct:
 
     def process_special(self, node, property_name, property_val):
         """Handle special cases"""
-        print(property_name, node)
         if property_name == 'phandle':
             self.root.set_phandle(property_val, node)
 
     def do_process_pass(self, stage, node, mapping_dict):
+        """Process attributes on a later pass for property decoding"""
         for item in node.keys():
             if item in mapping_dict:
                 value = self.process_property(stage, item, node[item], node)
@@ -383,7 +388,7 @@ class FDTStruct:
             self.do_process_pass(stage, child, mapping_dict)
 
     def do_process_passes(self):
-        print(self.root.phandles)
+        """The controller method that sets up which pass is going to be processed for later property decoding"""
         passes = list(self.config["properties"].keys())
         passes.sort()
         passes.remove("0")
@@ -391,7 +396,6 @@ class FDTStruct:
             mapping_dict = self.config["properties"][current_pass]
             node = self.root
             self.do_process_pass(current_pass, node, mapping_dict)
-
 
     def new_property(self, node, offset, properties):
         """Add a property to the specified node"""

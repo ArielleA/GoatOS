@@ -21,7 +21,10 @@
     "interrupt-parent": {"types": ["phandle"]}
   },
   "2":{
-    "interrupt":      {"types":["prop-encode"],"template":["u32"],"count":"#interrupt-cells"},
-    "interrupt-map":  {"types":["prop-encode"],"template":[null,"interrupt","phandle","interrupt"],"sizes":["#address-cells","#interrupt-cells","phandle","#interrupt-cells"]}
+    "interrupts":      {"types": ["prop-encode"], "sizes": ["u32"], "count": "#interrupt-cells" }
   }
+},
+"other":{
+  "interrupts":      {"types": ["prop-encode"], "sizes": ["u32"], "count": "#interrupt-cells" },
+  "interrupt-map":  {"types":  ["prop-encode"], "template": [null,"interrupt","phandle","interrupt"], "sizes": ["#address-cells","#interrupt-cells","phandle","#interrupt-cells"]}
 }}
