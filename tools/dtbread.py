@@ -326,6 +326,12 @@ class FDTStruct:
             elif "u64" in types:
                 value, property_value = self._get_u64(property_value)
                 return value
+            elif "u32u64" in types:
+                if len(property_value) == struct.calcsize("!I"):
+                    value, property_value = self._get_u32(property_value)
+                else:
+                    value, property_value = self._get_u64(property_value)
+                return value
             elif "string" in types:
                 value, property_value = self._get_string(property_value, property_dict[property_name])
                 return value
@@ -344,15 +350,18 @@ class FDTStruct:
                         element_sizes.append(sizes[0])
                 else:
                     for item in sizes:
-                        item_size = node.get_inherited(item)
-                        if item_size == 1:
-                            element_sizes.append('u32')
-                        elif item_size == 2:
-                            element_sizes.append('u64')
-                        elif item_size == 0:
-                            element_sizes.append('u0')
+                        if item in ['u32', 'u64']:
+                            element_sizes.append(item)
                         else:
-                            raise ValueError("Unsupported item length")
+                            item_size = node.get_inherited(item)
+                            if item_size == 1:
+                                element_sizes.append('u32')
+                            elif item_size == 2:
+                                element_sizes.append('u64')
+                            elif item_size == 0:
+                                element_sizes.append('u0')
+                            else:
+                                raise ValueError("Unsupported item length")
                 elements = []
                 while property_value != b'':
                     element = []

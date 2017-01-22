@@ -14,17 +14,58 @@
     "device_type":          { "types": ["string"]},
     "#interrupt-cells":     { "types": ["u32"]},
     "interrupt-controller": { "types": ["empty"]},
-    "linux,phandle":        { "types": ["u32"]}
-
+    "linux,phandle":        { "types": ["u32"]},
+    "initial-mapped-area":  { "types": ["prop-encode"], "sizes": ["u64","u64","u32"]},
+    "bootargs":             { "types": ["string"]},
+    "stdin-path":           { "types": ["string"]},
+    "stdout-path":          { "types": ["string"]},
+    "clock-frequency":      { "types": ["u32u64"]},
+    "timebase-frequency":   { "types": ["u32u64"]},
+    "enable-method":        { "types": ["stringlist"]},
+    "cpu-release-addr":     { "types": ["u64"]},
+    "power-isa-version":    { "types": ["string"]},
+    "cache-op-block-size":  { "types": ["u32"]},
+    "reservation-granule-size": { "types": ["u32"]},
+    "mmu-type":             { "types": ["string"], "values": ["mpc8xx", "ppc40x", "ppc440", "ppc476", "power-embedded", "powerpc-classic", "power-server-stab", "power-server-slb", "none"]},
+    "tlb-split":            { "types": ["empty"]},
+    "tlb-size":             { "types": ["u32"]},
+    "tlb-sets":             { "types": ["u32"]},
+    "d-tlb-size":           { "types": ["u32"]},
+    "d-tlb-sets":           { "types": ["u32"]},
+    "i-tlb-size":           { "types": ["u32"]},
+    "i-tlb-sets":           { "types": ["u32"]},
+    "cache-unified":        { "types": ["empty"]},
+    "cache-size":           { "types": ["u32"]},
+    "cache-sets":           { "types": ["u32"]},
+    "cache-block-size":     { "types": ["u32"]},
+    "cache-line-size":      { "types": ["u32"]},
+    "i-cache-size":         { "types": ["u32"]},
+    "i-cache-sets":         { "types": ["u32"]},
+    "d-cache-size":         { "types": ["u32"]},
+    "d-cache-sets":         { "types": ["u32"]},
+    "i-cache-block-size":   { "types": ["u32"]},
+    "i-cache-line-size":    { "types": ["u32"]},
+    "d-cache-block-size":   { "types": ["u32"]},
+    "d-cache-line-size":    { "types": ["u32"]},
+    "cache-level":          { "types": ["u32"]},
+    "reg-shift":            { "types": ["u32"]},
+    "current-speed":        { "types": ["u32"]},
+    "address-bits":         { "types": ["u32"]},
+    "max-frame-size":       { "types": ["u32"]},
+    "local-mac-address":    { "types": ["prop-encode"], "sizes": "macaddress"},
+    "mac-address":          { "types": ["prop-encode"], "sizes": "macaddress"},
+    "phy-connection-type":  { "types": ["string"], "values": ["mii", "rmii", "gmii", "rgmii", "rgmii-td", "rgmii-txid", "rgmii-rxid", "tbi", "rtbi", "smii", "sgmii", "rev-mii", "xgmii", "moca", "qsgmii"]}
   },
   "1":{
-    "interrupt-parent": {"types": ["phandle"]}
+    "next-level-cache":     { "types": ["phandle"]},
+    "interrupt-parent":     { "types": ["phandle"]},
+    "phy-handle":           { "types": ["phandle"]}
   },
   "2":{
-    "interrupts":      {"types": ["prop-encode"], "sizes": ["u32"], "count": "#interrupt-cells" }
+    "interrupts":           { "types": ["prop-encode"], "sizes": ["u32"], "count": "#interrupt-cells" }
   }
 },
 "other":{
-  "interrupts":      {"types": ["prop-encode"], "sizes": ["u32"], "count": "#interrupt-cells" },
+  "interrupt-mask": {"types": ["prop-encode"]},
   "interrupt-map":  {"types":  ["prop-encode"], "template": [null,"interrupt","phandle","interrupt"], "sizes": ["#address-cells","#interrupt-cells","phandle","#interrupt-cells"]}
 }}
